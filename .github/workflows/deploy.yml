@@ -3,7 +3,7 @@ name: Deploy Yii2 App via Docker Swarm
 on:
   push:
     branches:
-      - main  # change if you're using a different branch
+      - master
 
 jobs:
   build-and-deploy:
@@ -11,12 +11,12 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Login to Docker Hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
       - name: Build and Push Docker Image
@@ -24,14 +24,17 @@ jobs:
           docker build -t ${{ secrets.DOCKER_USERNAME }}/yii2-app:latest .
           docker push ${{ secrets.DOCKER_USERNAME }}/yii2-app:latest
 
-      - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.0.0
+      - name: SSH and Deploy
+        uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             docker pull ${{ secrets.DOCKER_USERNAME }}/yii2-app:latest
-            docker service ls | grep yii2-app-service && \
-              docker service update --image ${{ secrets.DOCKER_USERNAME }}/yii2-app:latest yii2-app-service || \
-              docker service create --name yii2-app-service -p 9000:9000 ${{ secrets.DOCKER_USERNAME }}/yii2-app:latest
+            docker service rm yii2-app-service || true
+            docker service create \
+              --name yii2-app-service \
+              --replicas 1 \
+              -p 9000:9000 \
+              ${{ secrets.DOCKER_USERNAME }}/yii2-app:latest
